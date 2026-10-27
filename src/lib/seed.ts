@@ -1,4 +1,3 @@
-import { nanoid } from 'nanoid'
 import { db, type Deck, type Note, type Task } from './db'
 import { newFlashcard } from './fsrs'
 import { offsetDateKey, todayKey } from './dates'
@@ -6,8 +5,25 @@ import { stripHtml } from './utils'
 
 const SEED_FLAG = 'studywise:seeded'
 
+// Deterministic ids + bulkPut make seeding idempotent even if it runs twice
+// (e.g. React StrictMode double-invoking the mount effect).
+const ID = {
+  welcomeNote: 'seed-note-welcome',
+  kinematicsNote: 'seed-note-kinematics',
+  deck: 'seed-deck-kinematics',
+  card: (i: number) => `seed-card-kinematics-${i}`,
+  task: (i: number) => `seed-task-${i}`,
+}
+
+let seeding: Promise<void> | null = null
+
 /** Populate a brand-new workspace with a small example set so the app never feels empty. */
-export async function seedIfEmpty() {
+export function seedIfEmpty() {
+  seeding ??= runSeed()
+  return seeding
+}
+
+async function runSeed() {
   if (localStorage.getItem(SEED_FLAG)) return
   const count = await db.notes.count()
   if (count > 0) {
@@ -18,7 +34,6 @@ export async function seedIfEmpty() {
   const now = Date.now()
 
   const welcomeHtml = `
-<h1>Welcome to StudyWise</h1>
 <p>This is your <strong>local-first</strong> study workspace. Everything you create is stored on this device and works offline.</p>
 <h2>Try these</h2>
 <ul data-type="taskList">
@@ -37,7 +52,6 @@ export async function seedIfEmpty() {
 <blockquote>Tip: the planner, flashcards and notes all understand subjects, so you can see where your time goes.</blockquote>`
 
   const kinematicsHtml = `
-<h1>Kinematics — quick revision</h1>
 <p>Motion in one dimension with constant acceleration.</p>
 <h2>Equations of motion</h2>
 <ul>
@@ -59,7 +73,7 @@ export async function seedIfEmpty() {
 
   const notes: Note[] = [
     {
-      id: nanoid(),
+      id: ID.welcomeNote,
       title: 'Welcome to StudyWise',
       content: welcomeHtml,
       plainText: stripHtml(welcomeHtml),
@@ -70,7 +84,7 @@ export async function seedIfEmpty() {
       updatedAt: now - 1000,
     },
     {
-      id: nanoid(),
+      id: ID.kinematicsNote,
       title: 'Kinematics — quick revision',
       content: kinematicsHtml,
       plainText: stripHtml(kinematicsHtml),
@@ -83,7 +97,7 @@ export async function seedIfEmpty() {
   ]
 
   const deck: Deck = {
-    id: nanoid(),
+    id: ID.deck,
     title: 'Kinematics',
     description: 'Equations of motion and graph interpretation',
     subjectId: 'physics',
@@ -101,13 +115,14 @@ export async function seedIfEmpty() {
       'Velocity and acceleration at the top of a vertical throw?',
       'Velocity = 0, acceleration = g (downwards)',
     ],
-  ].map(([front, back]) =>
-    newFlashcard({ deckId: deck.id, front, back, sourceNoteId: notes[1].id }),
-  )
+  ].map(([front, back], i) => ({
+    ...newFlashcard({ deckId: deck.id, front, back, sourceNoteId: notes[1].id }),
+    id: ID.card(i),
+  }))
 
   const tasks: Task[] = [
     {
-      id: nanoid(),
+      id: ID.task(1),
       title: 'Review Kinematics flashcards',
       notes: '',
       dueDate: todayKey(),
@@ -119,7 +134,7 @@ export async function seedIfEmpty() {
       updatedAt: now,
     },
     {
-      id: nanoid(),
+      id: ID.task(2),
       title: 'Solve 10 practice questions',
       notes: 'Use the Practice tab. Aim for 80% accuracy.',
       dueDate: todayKey(),
@@ -131,7 +146,7 @@ export async function seedIfEmpty() {
       updatedAt: now,
     },
     {
-      id: nanoid(),
+      id: ID.task(3),
       title: 'Make notes on Chemical Bonding',
       notes: '',
       dueDate: offsetDateKey(1),
@@ -143,7 +158,7 @@ export async function seedIfEmpty() {
       updatedAt: now,
     },
     {
-      id: nanoid(),
+      id: ID.task(4),
       title: 'Plan next week’s timetable',
       notes: '',
       dueDate: offsetDateKey(3),
@@ -157,10 +172,10 @@ export async function seedIfEmpty() {
   ]
 
   await db.transaction('rw', db.notes, db.decks, db.cards, db.tasks, async () => {
-    await db.notes.bulkAdd(notes)
-    await db.decks.add(deck)
-    await db.cards.bulkAdd(cards)
-    await db.tasks.bulkAdd(tasks)
+    await db.notes.bulkPut(notes)
+    await db.decks.put(deck)
+    await db.cards.bulkPut(cards)
+    await db.tasks.bulkPut(tasks)
   })
   localStorage.setItem(SEED_FLAG, '1')
 }
