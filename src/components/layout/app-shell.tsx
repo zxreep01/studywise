@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { Moon, Search, Sun, SunMoon, WifiOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -109,8 +109,14 @@ export function AppShell() {
     }
   }, [navigate])
 
-  // Move focus to the main region on route change so screen-reader users land on new content.
+  // Move focus to the main region on client-side route changes so assistive-tech users land on
+  // the new content. Skipped on the initial load so the skip link stays the first Tab stop.
+  const isFirstRender = useRef(true)
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false
+      return
+    }
     const main = document.getElementById('main')
     if (main && !location.search) main.focus({ preventScroll: true })
   }, [location.pathname, location.search])

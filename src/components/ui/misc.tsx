@@ -238,11 +238,11 @@ export function Stat({
   tone?: 'default' | 'primary' | 'success' | 'warning'
 }) {
   return (
-    <div className="flex items-start gap-3 rounded-xl border bg-card p-4 shadow-soft">
+    <div className="flex items-start gap-3 rounded-xl border bg-card p-3 shadow-soft sm:p-4">
       {Icon ? (
         <div
           className={cn(
-            'flex size-10 shrink-0 items-center justify-center rounded-xl',
+            'hidden size-10 shrink-0 items-center justify-center rounded-xl sm:flex',
             tone === 'default' && 'bg-muted text-muted-foreground',
             tone === 'primary' && 'bg-primary/10 text-primary',
             tone === 'success' && 'bg-success/10 text-success',
@@ -253,8 +253,8 @@ export function Stat({
         </div>
       ) : null}
       <div className="min-w-0">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-        <p className="mt-0.5 text-2xl font-bold tabular-nums tracking-tight">{value}</p>
+        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">{label}</p>
+        <p className="mt-0.5 text-xl font-bold tabular-nums tracking-tight sm:text-2xl">{value}</p>
         {hint ? <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p> : null}
       </div>
     </div>
