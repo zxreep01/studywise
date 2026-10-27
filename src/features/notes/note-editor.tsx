@@ -31,7 +31,7 @@ import {
   Undo2,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { db } from '@/lib/db'
+import { db, type Note } from '@/lib/db'
 import { cn, stripHtml } from '@/lib/utils'
 import { SUBJECTS } from '@/data/syllabus'
 import { Button } from '@/components/ui/button'
@@ -68,17 +68,32 @@ export function NoteEditor({ noteId }: { noteId: string }) {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const saveTimer = useRef<number | undefined>(undefined)
   const loadedRef = useRef(false)
+  // Title and body edits accumulate here and are written together, so a quick
+  // title-then-body edit never drops one of them and nothing is lost on unmount.
+  const pending = useRef<Partial<Pick<Note, 'title' | 'content' | 'plainText'>>>({})
 
-  const persistContent = useCallback(
-    (html: string) => {
+  const flush = useCallback(async () => {
+    window.clearTimeout(saveTimer.current)
+    const patch = pending.current
+    pending.current = {}
+    if (Object.keys(patch).length === 0) return
+    await db.notes.update(noteId, { ...patch, updatedAt: Date.now() })
+    setSaved('saved')
+  }, [noteId])
+
+  const schedule = useCallback(
+    (patch: Partial<Pick<Note, 'title' | 'content' | 'plainText'>>) => {
+      Object.assign(pending.current, patch)
       setSaved('saving')
       window.clearTimeout(saveTimer.current)
-      saveTimer.current = window.setTimeout(async () => {
-        await db.notes.update(noteId, { content: html, plainText: stripHtml(html), updatedAt: Date.now() })
-        setSaved('saved')
-      }, 400)
+      saveTimer.current = window.setTimeout(() => void flush(), 400)
     },
-    [noteId],
+    [flush],
+  )
+
+  const persistContent = useCallback(
+    (html: string) => schedule({ content: html, plainText: stripHtml(html) }),
+    [schedule],
   )
 
   const editor = useEditor({
@@ -115,16 +130,21 @@ export function NoteEditor({ noteId }: { noteId: string }) {
     loadedRef.current = true
   }, [editor, note])
 
-  useEffect(() => () => window.clearTimeout(saveTimer.current), [])
+  // Flush unsaved edits when navigating away or when the tab is hidden/closed.
+  useEffect(() => {
+    const onHide = () => void flush()
+    window.addEventListener('pagehide', onHide)
+    document.addEventListener('visibilitychange', onHide)
+    return () => {
+      window.removeEventListener('pagehide', onHide)
+      document.removeEventListener('visibilitychange', onHide)
+      void flush()
+    }
+  }, [flush])
 
   const onTitleChange = (value: string) => {
     setTitle(value)
-    setSaved('saving')
-    window.clearTimeout(saveTimer.current)
-    saveTimer.current = window.setTimeout(async () => {
-      await db.notes.update(noteId, { title: value, updatedAt: Date.now() })
-      setSaved('saved')
-    }, 300)
+    schedule({ title: value })
   }
 
   const makeFlashcard = () => {
@@ -207,9 +227,11 @@ export function NoteEditor({ noteId }: { noteId: string }) {
             placeholder="Untitled"
             className="w-full bg-transparent text-3xl font-bold tracking-tight outline-none placeholder:text-muted-foreground/50 md:text-4xl"
             onKeyDown={(e) => {
-              if (e.key === 'Enter') {
+              if (e.key === 'Enter' && editor) {
                 e.preventDefault()
-                editor?.commands.focus('start')
+                // Focus the DOM synchronously so fast typists don't leak characters into the title.
+                editor.view.dom.focus()
+                editor.commands.focus('start')
               }
             }}
           />

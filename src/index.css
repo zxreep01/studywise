@@ -206,6 +206,8 @@
   /* TipTap / ProseMirror editor surface */
   .prose-editor .tiptap {
     @apply min-h-[50vh] outline-none;
+    white-space: pre-wrap;
+    word-wrap: break-word;
   }
   .prose-editor .tiptap > * + * {
     margin-top: 0.75em;
